@@ -1,29 +1,20 @@
+version: "3.9"
 
 services:
-  postgres:
+  db:
     image: postgres:15
     container_name: fin_db
+  
     restart: always
     environment:
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: 1234
-      POSTGRES_DB: fin_db
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: avito_dw
     ports:
-      - "5433:5432"
+      - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
-
-  pgadmin:
-    image: dpage/pgadmin4
-    container_name: pgadmin4
-    restart: always
-    environment:
-      PGADMIN_DEFAULT_EMAIL: admin@admin.com
-      PGADMIN_DEFAULT_PASSWORD: asiya
-    ports:
-      - "5050:80"
-    depends_on:
-      - postgres
+      - ./warehouse/create_warehouse_table.sql:/docker-entrypoint-initdb.d/create_warehouse_table.sql
 
 volumes:
   postgres_data:

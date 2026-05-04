@@ -1,156 +1,226 @@
 import pandas as pd
+import numpy as np
 import re
+from datetime import datetime
 
 # =========================
 # LOAD DATA
 # =========================
+def load_csv_file(path):
+    encodings = ["utf-8", "utf-8-sig", "cp1252", "latin1"]
 
-df = pd.read_csv("avito_data_clean.csv")  
+    for enc in encodings:
+        try:
+            df = pd.read_csv(path, encoding=enc)
+            print(f"File loaded with encoding: {enc}")
+            return df
+        except Exception:
+            pass
 
-print("BEFORE CLEAN:", df.shape)
+    raise ValueError("Impossible de lire le fichier CSV avec les encodings testés")
+
+
+df = load_csv_file("avito_data_clean.csv")
+print("Before cleaning:", df.shape)
 
 # =========================
 # CLEAN FUNCTIONS
 # =========================
+def clean_numeric(value):
+    if pd.isna(value):
+        return np.nan
 
-def clean_price(x):
-    if pd.isna(x):
-        return None
-    try:
-        return int(re.sub(r"\D", "", str(x)))
-    except:
-        return None
+    numbers = re.findall(r"\d+(?:[.,]\d+)?", str(value).replace(" ", ""))
+    if not numbers:
+        return np.nan
 
-
-def clean_surface(x):
-    if pd.isna(x):
-        return None
-    try:
-        return int(re.sub(r"\D", "", str(x)))
-    except:
-        return None
+    return float(numbers[0].replace(",", "."))
 
 
-def clean_rooms(x):
-    if pd.isna(x):
-        return None
-    match = re.search(r"\d+", str(x))
-    return int(match.group()) if match else None
+def clean_integer(value):
+    number = clean_numeric(value)
+    if pd.isna(number):
+        return np.nan
+    return int(number)
 
 
-def clean_baths(x):
-    if pd.isna(x):
-        return None
-    match = re.search(r"\d+", str(x))
-    return int(match.group()) if match else None
+def standardize_city(city):
+    if pd.isna(city):
+        return np.nan
+
+    city = str(city).strip().lower()
+
+    city_map = {
+        "casa": "Casablanca",
+        "casablanca": "Casablanca",
+        "rabat": "Rabat",
+        "marrakech": "Marrakech",
+        "tanger": "Tanger",
+        "tangier": "Tanger",
+        "agadir": "Agadir",
+        "fes": "Fes",
+        "fès": "Fes",
+        "oujda": "Oujda",
+        "tamaris": "Tamaris",
+    }
+
+    return city_map.get(city, city.title())
 
 
-def split_location(loc):
-    if pd.isna(loc):
-        return None, None
-    if "," in loc:
-        parts = loc.split(",")
-        return parts[0].strip(), parts[1].strip()
-    return loc, None
+def extract_city_from_text(text):
+    if pd.isna(text):
+        return np.nan
+
+    text = str(text).lower()
+
+    known_cities = [
+        "casablanca",
+        "rabat",
+        "marrakech",
+        "tanger",
+        "agadir",
+        "fes",
+        "oujda",
+        "tamaris",
+    ]
+
+    for city in known_cities:
+        if city in text:
+            return standardize_city(city)
+
+    return np.nan
+
+
+def split_location(location):
+    if pd.isna(location):
+        return pd.Series([np.nan, "Non renseigne"])
+
+    location_str = str(location).strip()
+
+    if "," in location_str:
+        parts = [part.strip() for part in location_str.split(",") if part.strip()]
+        if len(parts) >= 2:
+            district = parts[0].title()
+            city = standardize_city(parts[-1])
+            return pd.Series([city, district])
+
+    city_from_text = extract_city_from_text(location_str)
+    if pd.notna(city_from_text):
+        return pd.Series([city_from_text, "Non renseigne"])
+
+    return pd.Series([standardize_city(location_str), "Non renseigne"])
+
+
+def extract_district_from_title(title):
+    if pd.isna(title):
+        return np.nan
+
+    title_str = str(title).lower()
+
+    known_districts = [
+        "almaz",
+        "hivernage",
+        "bourgogne",
+        "maarif",
+        "mers sultan",
+        "hay mohammadi",
+        "sidi bernoussi",
+        "roches noires",
+        "val fleuri",
+        "tanja balia",
+        "boustane",
+    ]
+
+    for district in known_districts:
+        if district in title_str:
+            return district.title()
+
+    return np.nan
+
+
+def quality_status(row):
+    if pd.isna(row["source_url"]) or pd.isna(row["price_mad"]) or pd.isna(row["city"]):
+        return "REVIEW"
+    return "VALID"
 
 
 # =========================
-# APPLY CLEANING
+# BASIC CLEANING
 # =========================
+df = df.drop_duplicates(subset=["link"]).copy()
 
-df["price"] = df["price"].apply(clean_price)
-df["surface"] = df["surface"].apply(clean_surface)
-df["rooms"] = df["rooms"].apply(clean_rooms)
-df["baths"] = df["baths"].apply(clean_baths)
+df["title"] = df["title"].fillna("Annonce sans titre")
+df["source_url"] = df["link"]
 
-df[["city", "quartier"]] = df["location"].apply(
-    lambda x: pd.Series(split_location(x))
-)
+df["price_mad"] = df["price"].apply(clean_numeric)
+df["area_m2"] = df["surface"].apply(clean_numeric)
+df["bedrooms"] = df["rooms"].apply(clean_integer)
+df["bathrooms"] = df["baths"].apply(clean_integer)
 
-# =========================
-# HANDLE MISSING VALUES (SAFE)
-# =========================
+df[["city", "district"]] = df["location"].apply(split_location)
 
-df = df[df["price"].notna()]   
+missing_district = df["district"].isna() | (df["district"] == "Non renseigne")
+df["district"] = df["district"].astype("object")
 
-# fill values
-df["surface"] = df["surface"].fillna(df["surface"].median())
-df["rooms"] = df["rooms"].fillna(1)
-df["baths"] = df["baths"].fillna(1)
+for idx in df[missing_district].index:
+    new_value = extract_district_from_title(df.loc[idx, "title"])
+    if pd.notna(new_value):
+        df.loc[idx, "district"] = new_value
 
-# =========================
-# REMOVE DUPLICATES
-# =========================
-
-df = df.drop_duplicates(subset=["link"])
+df["district"] = df["district"].fillna("Non renseigne")
 
 # =========================
-# REMOVE OUTLIERS
+# HANDLE MISSING VALUES
 # =========================
+df = df[df["source_url"].notna()]
+df = df[df["price_mad"].notna()]
+df = df[df["city"].notna()]
 
-df = df[(df["price"] > 50000) & (df["price"] < 10000000)]
-df = df[(df["surface"] > 20) & (df["surface"] < 500)]
+# =========================
+# OUTLIERS
+# =========================
+df = df[df["area_m2"].notna()]
+df = df[(df["area_m2"] >= 10) & (df["area_m2"] <= 500)]
 
 # =========================
 # FEATURE ENGINEERING
 # =========================
+df["price_per_m2"] = df["price_mad"] / df["area_m2"].replace(0, np.nan)
 
-df["price_m2"] = df["price"] / df["surface"]
+df["construction_year"] = np.nan
+df["floor_no"] = np.nan
 
-
-def price_category(price):
-    if pd.isna(price):
-        return None
-    if price < 500000:
-        return "Low"
-    elif price < 1000000:
-        return "Medium"
-    elif price < 2000000:
-        return "High"
-    else:
-        return "Luxury"
-
-df["price_category"] = df["price"].apply(price_category)
-
-def extract_type(title):
-    if pd.isna(title):
-        return None
-    match = re.search(r"(Appartement|Villa|Maison|Studio)", title, re.IGNORECASE)
-    return match.group(1) if match else None
-
-df["property_type"] = df["title"].apply(extract_type)
-
-
-def is_new(desc):
-    if pd.isna(desc):
-        return False
-    return bool(re.search(r"neuf|nouveau", desc, re.IGNORECASE))
-
-df["is_new"] = df["title"].apply(is_new)
-
-
-df["size_category"] = pd.cut(
-    df["surface"],
-    bins=[0, 60, 100, 200, 500],
-    labels=["Small", "Medium", "Large", "Very Large"]
+current_year = datetime.now().year
+df["estimated_age"] = df["construction_year"].apply(
+    lambda x: current_year - x if pd.notna(x) else np.nan
 )
 
-df["bath_room_ratio"] = df["baths"] / df["rooms"]
-
-avg_price_m2 = df.groupby("city")["price_m2"].transform("mean")
-df["is_good_deal"] = df["price_m2"] < avg_price_m2
+df["extracted_at"] = pd.Timestamp.now()
+df["data_quality_status"] = df.apply(quality_status, axis=1)
 
 # =========================
-# FINAL CHECK
+# FINAL DATASET
 # =========================
+clean_df = df[
+    [
+        "source_url",
+        "title",
+        "city",
+        "district",
+        "price_mad",
+        "area_m2",
+        "bedrooms",
+        "bathrooms",
+        "floor_no",
+        "construction_year",
+        "estimated_age",
+        "price_per_m2",
+        "extracted_at",
+        "data_quality_status",
+    ]
+].copy()
 
-print("AFTER CLEAN:", df.shape)
-print(df.head())
+print("After cleaning:", clean_df.shape)
 
-# =========================
-# SAVE CLEAN DATA
-# =========================
-
-df.to_csv("clean_data.csv", index=False)
-
-print("✅ CLEAN DATA SAVED")
+clean_df.to_csv("clean_data.csv", index=False, encoding="utf-8-sig")
+print("clean_data.csv saved successfully")
