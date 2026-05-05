@@ -34,15 +34,14 @@ AVITO_PIPELINE/
 │   └── docker-compose.yml
 ├── extract/
 ├── warehouse/
-│   ├── create_warehouse.sql
-│   └── load_warehouse.py
+│   ├── create_warhouse.sql
+│   └── load_warhouse.py
 ├── avito_data_clean.csv
 ├── clean_data.csv
 ├── pipeline.py
-├── pipeline.log
 ├── README.md
 └── .gitignore
-1. Clean Layer
+Clean Layer
 Le script clean/clean_data.py applique un nettoyage structuré des données :
 
 suppression des doublons
@@ -50,10 +49,9 @@ gestion des valeurs manquantes
 correction des types de données
 standardisation des villes et quartiers
 traitement simple des valeurs aberrantes
-Cette étape génère un dataset propre et cohérent exporté dans le fichier :
+Cette étape génère un dataset propre et cohérent exporté dans le fichier clean_data.csv.
 
-clean_data.csv
-2. Feature Engineering
+Feature Engineering
 Le projet crée des variables dérivées simples pour enrichir le dataset :
 
 price_per_m2
@@ -62,7 +60,7 @@ city
 district
 Les transformations avancées de Machine Learning, telles que le scaling, l’encoding, la normalisation ou le SMOTE, ne sont pas réalisées dans cette étape. Elles sont prévues après extraction depuis la base de données.
 
-3. Data Warehouse
+Data Warehouse
 À partir des données nettoyées, le projet construit deux structures de données.
 
 BI Schema (bi_schema)
@@ -80,7 +78,7 @@ Le schéma ML contient une table unique :
 listings_features
 Cette table correspond à une One Big Table (OBT) contenant l’ensemble des variables utiles à une future phase de Machine Learning.
 
-4. Validation des données
+Validation des données
 Le processus de chargement inclut plusieurs contrôles :
 
 cohérence du nombre de lignes entre clean.cleaned_listings, bi_schema.fact_listing et ml_schema.listings_features
@@ -93,7 +91,7 @@ bi_schema.fact_listing : 264 lignes
 ml_schema.listings_features : 264 lignes
 valeurs importantes manquantes : 0
 relations BI cassées : 0
-5. Automatisation du pipeline
+Automatisation du pipeline
 Le fichier pipeline.py permet d’automatiser l’exécution du pipeline.
 
 Dans la version actuelle, il exécute les étapes suivantes :
@@ -106,8 +104,8 @@ Le pipeline inclut :
 exécution séquentielle
 génération de logs
 mécanisme de retry simple
-réexécution automatique facilitée
-6. Docker et base de données
+réexécution facilitée
+Docker et base de données
 La base PostgreSQL est exécutée avec Docker Compose.
 
 Le fichier docker/docker-compose.yml permet de lancer le service avec :
@@ -123,9 +121,9 @@ python clean\clean_data.py
 3. Lancer PostgreSQL avec Docker Compose
 docker compose -f docker/docker-compose.yml up -d
 4. Créer les schémas et les tables
-Get-Content warehouse\create_warehouse.sql | docker exec -i fin_db psql -U postgres -d avito_dw
+Get-Content warehouse\create_warhouse.sql | docker exec -i fin_db psql -U postgres -d avito_dw
 5. Charger les données dans le Data Warehouse
-python warehouse\load_warehouse.py
+python warehouse\load_warhouse.py
 6. Lancer le pipeline complet
 python pipeline.py
 Technologies utilisées
@@ -134,8 +132,3 @@ Pandas
 SQLAlchemy
 PostgreSQL
 Docker Compose
-Remarques
-Le schéma public correspond au schéma par défaut de PostgreSQL.
-Les schémas utilisés dans le projet sont clean, bi_schema et ml_schema.
-Le fichier pipeline.log est généré automatiquement pour enregistrer l’exécution du pipeline.
-La zone staging n’est pas utilisée dans cette version finale, mais sa gestion est prévue dans le processus de chargement.
