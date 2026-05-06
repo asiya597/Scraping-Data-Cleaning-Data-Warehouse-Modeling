@@ -18,7 +18,7 @@ for page in range(10):
 
     cards = driver.find_elements(By.CSS_SELECTOR, "a[href*='/appartements/']")
 
-    print("CARDS FOUND:", len(cards))  # 👈 هنا حطها
+    print("CARDS FOUND:", len(cards)) 
 
     for c in cards:
         try:

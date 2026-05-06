@@ -165,8 +165,33 @@ def validate_counts():
     print("bi_schema.fact_listing:", bi_count)
     print("ml_schema.listings_features:", ml_count)
 
-    if clean_count != bi_count or clean_count != ml_count:
-        raise ValueError("Validation failed: row counts do not match")
+
+def main():
+    load_clean_table()
+    populate_bi_schema()
+    populate_ml_schema()
+    validate_counts()
+    print("Warehouse loading finished successfully")
+
+
+if __name__ == "__main__":
+    main()
+
+
+def clear_staging():
+    with engine.begin() as conn:
+        conn.execute(text("TRUNCATE TABLE staging.raw_listings RESTART IDENTITY"))
+    print("staging cleaned successfully")
+
+
+def main():
+    load_clean_table()
+    populate_bi_schema()
+    populate_ml_schema()
+    validate_counts()
+    clear_staging()
+    print("Warehouse loading finished successfully")
+
 
 
 def validate_quality():

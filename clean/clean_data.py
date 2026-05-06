@@ -90,25 +90,23 @@ def extract_city_from_text(text):
 
     return np.nan
 
-
 def split_location(location):
     if pd.isna(location):
         return pd.Series([np.nan, "Non renseigne"])
 
     location_str = str(location).strip()
+    parts = [part.strip() for part in location_str.split(",") if part.strip()]
 
-    if "," in location_str:
-        parts = [part.strip() for part in location_str.split(",") if part.strip()]
-        if len(parts) >= 2:
-            district = parts[0].title()
-            city = standardize_city(parts[-1])
-            return pd.Series([city, district])
+    if len(parts) >= 2:
+        city_part = parts[0].replace("Appartements dans", "").strip()
+        city = standardize_city(city_part)
+        district = parts[1].title()
+        return pd.Series([city, district])
 
-    city_from_text = extract_city_from_text(location_str)
-    if pd.notna(city_from_text):
-        return pd.Series([city_from_text, "Non renseigne"])
+    city_part = location_str.replace("Appartements dans", "").strip()
+    city = standardize_city(city_part)
+    return pd.Series([city, "Non renseigne"])
 
-    return pd.Series([standardize_city(location_str), "Non renseigne"])
 
 
 def extract_district_from_title(title):
@@ -158,6 +156,9 @@ df["bedrooms"] = df["rooms"].apply(clean_integer)
 df["bathrooms"] = df["baths"].apply(clean_integer)
 
 df[["city", "district"]] = df["location"].apply(split_location)
+
+missing_city = df["city"].isna()
+df.loc[missing_city, "city"] = df.loc[missing_city, "title"].apply(extract_city_from_text)
 
 missing_district = df["district"].isna() | (df["district"] == "Non renseigne")
 df["district"] = df["district"].astype("object")
